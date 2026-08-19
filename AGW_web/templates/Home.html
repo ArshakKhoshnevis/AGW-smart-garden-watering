@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+
+<html lang = "en">
+
+<head>
+    <meta charset = "UTF-8">
+    <meta name = "author" content = "Arshak Khoshnevis">
+    <meta name = "viewport" content = "width = device-width, initial-scale = 1.0">
+    <title>Garden</title>
+
+    <link rel = "icon" href = "/static/blueberries.png" type = "image/x-icon">
+    <link rel = "stylesheet" href = "/static/Home.css">
+
+</head>
+
+<body>
+    <!-- <h1>hello {{session['username']}}</h1>
+    <button onclick = "togglePump(1)">Pump 1</button>
+    <button onclick = "togglePump(2)">Pump 2</button>
+    <button onclick = "togglePump(3)">Pump 3</button>
+    <button onclick = "togglePump(4)">Pump 4</button>
+    <a href = "{{ url_for('logout') }}">logout</a> -->
+
+    <div class = "container">
+        <header>
+            <h1 class = "username">Welcome {{ session['username'] }}!</h1>
+        </header>
+
+        <main>
+            <span class = "rotate-message">
+                Please rotate your phone to landscape mode!
+            </span>
+
+            <div class = "garden">
+
+                <a href = "{{ url_for('logout') }}" class = "logout">EXIT</a>
+
+                <div class = "garden-left">
+                    <input id = "checkbox-0" class = "checkbox" type = "checkbox" onclick = "togglePump(0);">
+                        <label class = "switch" for = "checkbox-0">
+                            <div class = "powersign"></div>
+                        </label>
+                    <h1 class = "moist" data-id = "0">100%</h1>
+                    <a href = "#" class = "hinfo">more</a>
+                </div>
+
+                <div class = "garden-topl">
+                    <input id = "checkbox-1" class = "checkbox" type = "checkbox" onclick = "togglePump(1);">
+                        <label class = "switch" for = "checkbox-1">
+                            <div class = "powersign"></div>
+                        </label>
+                    <h1 class = "moist" data-id = "1">100%</h1>
+                    <a href = "#" class = "hinfo">more</a>
+                </div>
+
+                <div class = "garden-topr">
+                    <input id = "checkbox-2" class = "checkbox" type = "checkbox" onclick = "togglePump(2);">
+                        <label class = "switch" for = "checkbox-2">
+                            <div class = "powersign"></div>
+                        </label>
+                    <h1 class = "moist" data-id = "2">100%</h1>
+                    <a href = "#" class = "hinfo">more</a>
+                </div>
+
+                <div class = "garden-right">
+                    <input id = "checkbox-3" class = "checkbox" type = "checkbox" onclick = "togglePump(3);">
+                        <label class = "switch" for = "checkbox-3">
+                            <div class = "powersign"></div>
+                        </label>
+                    <h1 class = "moist" data-id = "3">100%</h1>
+                    <a href = "#" class = "hinfo">more</a>
+                </div>
+
+                <div class = "info">
+                    <div class = "info-content">
+                        <h1 class = "infoMoist">Moisture: <span>100%</span></h1>
+                        <details>
+                            <summary>Last Time</summary>
+                            <h1 class = "infoLastTime">Last irrigation: 3 days ago</h1>
+                            <h1 class = "infoLastTime">Duration: duration</h1>
+                        </details>
+                        <details>
+                            <summary>Set time</summary>
+                            <h1>time</h1>
+                        </details>
+                        <h1 class = "infoPumpState">Pump is: <span class = "on">on</span></h1>
+                    </div>
+
+                    <div class = "info-footer">
+                        <h1 class = "infoDate">2025-09-04</h1>
+                        <h1 class = "infoTime">22:01:45</h1>
+                    </div>
+                </div>
+
+                <div class="logs">
+                    <details>
+                        <summary>logs</summary>
+                    </details>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+
+    <script src = "/static/Home.js"></script>
+</body>
+
+</html>

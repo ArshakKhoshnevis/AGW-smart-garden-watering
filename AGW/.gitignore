@@ -1,0 +1,9 @@
+# PlatformIO
+.pio/
+
+# VS Code
+.vscode/
+
+# Local credentials and secrets
+data/
+src/secrets.h

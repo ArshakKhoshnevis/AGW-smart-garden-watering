@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+
+<html lang = "en">
+
+<head>
+    <meta charset = "UTF-8">
+    <meta name = "author" content = "Arshak Khoshnevis">
+    <meta name = "viewport" content = "width = device-width, initial-scale = 1.0">
+    <title>Authentication</title>
+
+    <link rel = "stylesheet" href = "/static/Auth.css">
+    <link rel = "stylesheet" href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel = "icon" href = "../static/blueberries.png" type = "image/x-icon">
+</head>
+
+<body>
+    <main>
+        <div class = "container">
+            <h1 class = "toph">Authenticate</h1>
+            <form action = "/login-post" method = "post">
+                <div class = "input-box">
+                    <i class = "fa-solid fa-user"></i>
+                    <input type = "text" name = "username" id = "username" placeholder = "Enter your username" autocomplete = "on">
+                    <i class = "fa-solid fa-eye toggle-icon" id = "togglePassword" onclick = "togglePass()"></i>
+                    <input type = "password" name = "password" id = "password" placeholder = "Enter your password" autocomplete = "on">
+                </div>
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        {% for msg in messages %}
+                            <h3 class = "title">{{ msg }}</h3>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                <button type = "submit">Login</button>
+            </form>
+        </div>
+    </main>
+    <script src = "../static/Auth.js"></script>
+</body>
+
+</html>

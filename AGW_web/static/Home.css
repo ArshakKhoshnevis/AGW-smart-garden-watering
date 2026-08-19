@@ -1,0 +1,347 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --top-moist-dist: 70px;
+    --top-hinfo-dist: 2vw;
+    --lr-switch-dist: 40px;
+    --lr-top-switch-dist: 45vh;
+    --lr-h1-top-dist: 18vh;
+    --lr-h1-lr-dist: 30px;
+    --lr-h1-bottom-dist: 15vh;
+}
+
+html, body {
+    width: 100%;
+}
+
+.container {
+    position: relative;
+    background-color: aquamarine;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    padding: 1px;
+}
+
+header {
+    text-align: center;
+    margin-top: 20px;
+    padding: 0 10px;
+    word-wrap: break-word;
+}
+
+.rotate-message {
+    display: block;
+    text-align: center;
+    margin-top: 350px;
+    word-wrap: break-word;
+    font-size: 1.3em;
+    color: rgb(133, 0, 0);
+}
+
+.garden {
+    display: none;
+    position: relative;
+    width: 100%;
+    height: 200vh;
+    background-image: url("/static/homebg.jpg");
+    /* background-size: cover;
+    background-position: left;
+    background-repeat: no-repeat; */
+}
+
+.garden-left, .garden-right {
+    position: absolute;
+    width: 140px;
+    height: 100vh;
+    top: 130px;
+    background-image: url("/static/garden.jpeg");
+}
+
+.garden-topl, .garden-topr {
+    position: absolute;
+    width: 40vw;
+    height: 130px;
+    background-image: url("/static/garden.jpeg");
+}
+
+.garden-left, .garden-topl {
+    left: 0;
+}
+
+.garden-right, .garden-topr {
+    right: 0;
+}
+
+.info {
+    position: absolute;
+    flex-direction: column;
+    background-color: bisque;
+    display: none;
+    width: 60vw;
+    height: 100vh;
+    top: 140px;
+    left: 20vw;
+    overflow: hidden;
+}
+
+.info-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding-bottom: 10px;
+}
+
+.info-footer {
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.logout {
+    position: absolute;
+    color: brown;
+    background-color: rgba(201, 201, 201, 0.5);
+    font-size: 2.5em;
+    font-weight: 600;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 35px;
+    transform: translateX(-50%);
+}
+
+/* Switch */
+
+.checkbox {
+  display: none;
+}
+
+.switch {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  background-color: rgb(255, 5, 5);
+  border-radius: 50%;
+  z-index: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgb(255, 126, 126);
+  box-shadow: 0px 0px 3px rgb(248, 248, 248) inset;
+}
+
+.powersign {
+  position: relative;
+  width: 30%;
+  height: 30%;
+  border: 4px solid rgb(248, 248, 248);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.powersign::before {
+  content: "";
+  width: 8px;
+  height: 60%;
+  background-color: rgb(248, 248, 248);
+  position: absolute;
+  top: -60%;
+  z-index: 2;
+}
+
+.powersign::after {
+  content: "";
+  width: 3px;
+  height: 60%;
+  background-color: rgb(255, 5, 5);
+  position: absolute;
+  top: -60%;
+  z-index: 3;
+}
+
+.checkbox:checked + .switch .powersign {
+  border: 4px solid rgb(255, 255, 255);
+  box-shadow: 0px 0px 10px rgb(151, 243, 255),
+    0px 0px 5px rgb(151, 243, 255) inset;
+}
+
+.checkbox:checked + .switch .powersign::after {
+  background-color: rgb(150, 255, 194);
+}
+
+.checkbox:checked + .switch {
+  box-shadow: 0px 0px 1px rgb(150, 255, 194) inset,
+    0px 0px 2px rgb(150, 255, 194) inset,
+    0px 0px 10px rgb(150, 255, 194) inset,
+    0px 0px 40px rgb(150, 255, 194),
+    0px 0px 100px rgb(150, 255, 194),
+    0px 0px 5px rgb(150, 255, 194);
+  border: 2px solid rgb(255, 255, 255);
+  background-color: rgb(136, 219, 150);
+}
+
+.checkbox:checked + .switch .powersign::before {
+  background-color: rgb(255, 255, 255);
+}
+
+.garden-left .switch {
+    left: var(--lr-switch-dist);
+}
+
+.garden-left .switch, .garden-right .switch {
+    top: var(--lr-top-switch-dist);
+}
+
+.garden-right .switch {
+    right: var(--lr-switch-dist);
+}
+
+.garden-topl .switch, .garden-topr .switch {
+    top: 36px;
+}
+
+.garden-topl .switch {
+    left: 17vw;
+}
+
+.garden-topr .switch {
+    right: 17vw;
+}
+
+.moist {
+    position: absolute;
+    color: cyan;
+}
+
+.garden-topl h1, .garden-topr h1 {
+    top: 45px;
+}
+
+.hinfo {
+    position: absolute;
+    font-size: 2em;
+    color: rgb(99, 198, 255);
+}
+
+.garden-topl .hinfo, .garden-topr .hinfo {
+    top: 40px;
+}
+
+.garden-topl .moist {
+    left: var(--top-moist-dist);
+    transform: translateX(-50%);
+}
+
+.garden-topr .moist {
+    right: var(--top-moist-dist);
+    transform: translateX(50%);
+}
+
+.garden-topl .hinfo {
+    right: var(--top-hinfo-dist);
+}
+
+.garden-topr .hinfo {
+    left: var(--top-hinfo-dist);
+}
+
+.garden-left .moist, .garden-right .moist {
+    top: var(--lr-h1-top-dist);
+    color: cyan;
+}
+
+.garden-left .moist, .garden-right .moist, .garden-left .hinfo, .garden-right .hinfo {
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.garden-left .hinfo, .garden-right .hinfo {
+    bottom: var(--lr-h1-bottom-dist);
+}
+
+.infoMoist span{
+    color:rgb(36, 161, 161);
+}
+
+.info .on {
+    color: rgb(0, 168, 0);
+}
+
+.info .off {
+    color:red;
+}
+
+.infoDate, .infoTime {
+    margin-top: auto;
+}
+
+.info summary {
+    font-size: 2em;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+details {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    transition: box-shadow 0.3s;
+}
+
+details[open] {
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
+    border-left: 5px solid rgb(36, 161, 161);
+;
+}
+
+details[open] summary {
+    color:rgb(36, 161, 161);
+}
+
+details h1 {
+    padding-left: 30px;
+    font-size: 1.6rem;
+    margin-top: 15px;
+}
+
+@media screen and (orientation: portrait) {
+    .rotate-message {
+        display: block;
+    }
+
+    .container {
+        position: relative;
+        background-color: aquamarine;
+        width: 100%;
+        height: 100vh;
+        top: 0;
+        padding: 1px;
+    }
+
+    .garden {
+        display: none;
+    }
+}
+
+@media screen and (orientation: landscape) {
+    .username {
+        display: none;
+    }
+
+    header {
+        display: none;
+    }
+
+    .rotate-message {
+        display: none;
+    }
+
+    .garden {
+        display: block;
+    }
+}

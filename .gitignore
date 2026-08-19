@@ -1,0 +1,37 @@
+# =========================
+# AGW - GitHub Repository
+# =========================
+
+# PlatformIO
+**/.pio/
+**/.vscode/
+
+# Secrets & credentials
+**/secrets.h
+**/SECRETS.py
+**/credentials.json
+**/.env
+**/.env.*
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.venv/
+**/venv/
+
+# Local databases
+**/*.db*
+**/*.sqlite
+**/*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Third-party web assets
+AGW_web/static/1000_F_530531356_3Ctey6afdxtsEuawtKJrVXlUw2Ay5Oaj.jpg
+AGW_web/static/Garden Scenery Wallpapers - Wallpaper Cave.jpeg
+AGW_web/static/blueberries.png
+AGW_web/static/garden.jpeg
+AGW_web/static/homebg.jpg
