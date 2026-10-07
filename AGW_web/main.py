@@ -11,7 +11,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -72,6 +72,7 @@ class SensorSnapshot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     moisture = db.Column(db.JSON, nullable=False, default=lambda: [0, 0, 0, 0])
     updated_at = db.Column(db.String(40), nullable=True)
+    reported_pumps = db.Column(db.JSON, nullable=False, default=lambda: [False, False, False, False])
 
 
 class Pump(db.Model):
@@ -228,6 +229,7 @@ def states():
         "time": now.strftime("%H:%M:%S"),
         "timestamp": iso_utc(now),
         "deviceLastSeen": snapshot.updated_at,
+        "reportedPumpState": snapshot.reported_pumps,
     })
 
 
@@ -248,10 +250,14 @@ def api_sensor():
     data = request.get_json(silent=True)
     soil = data.get("soil") if isinstance(data, dict) else None
     boot = data.get("boot", False) if isinstance(data, dict) else False
+    reported_pumps = data.get("pumpState") if isinstance(data, dict) else None
     if (
         not isinstance(soil, list)
         or len(soil) != 4
         or any(type(value) is not int or not 0 <= value <= 100 for value in soil)
+        or not isinstance(reported_pumps, list)
+        or len(reported_pumps) != 4
+        or any(type(value) is not bool for value in reported_pumps)
         or type(boot) is not bool
     ):
         return jsonify({"status": "invalid_sensor_data"}), 400
@@ -272,11 +278,13 @@ def api_sensor():
 
     snapshot.moisture = soil
     snapshot.updated_at = iso_utc(now)
+    snapshot.reported_pumps = reported_pumps
     db.session.commit()
 
     pump_states = ["on" if pump.is_on else "off" for pump in pumps]
     pump_summary = ", ".join(
-        f"P{index + 1}={state.upper()}" for index, state in enumerate(pump_states)
+        f"P{index + 1}={'ON' if is_on else 'OFF'}"
+        for index, is_on in enumerate(reported_pumps)
     )
     soil_summary = ", ".join(f"{value}%" for value in soil)
     app.logger.info(
@@ -302,6 +310,13 @@ def healthz():
 def init_db():
     """Create initial tables and four safe, OFF pump records."""
     db.create_all()
+    snapshot_columns = {column["name"] for column in inspect(db.engine).get_columns("sensor_snapshot")}
+    if "reported_pumps" not in snapshot_columns:
+        db.session.execute(text(
+            "ALTER TABLE sensor_snapshot ADD COLUMN reported_pumps "
+            "JSON NOT NULL DEFAULT '[false, false, false, false]'"
+        ))
+        db.session.commit()
     if db.session.get(SensorSnapshot, 1) is None:
         db.session.add(SensorSnapshot(id=1, moisture=[0, 0, 0, 0]))
     for pump_id in range(1, 5):
