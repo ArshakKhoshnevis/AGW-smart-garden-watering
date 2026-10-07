@@ -281,7 +281,6 @@ def api_sensor():
     snapshot.reported_pumps = reported_pumps
     db.session.commit()
 
-    pump_states = ["on" if pump.is_on else "off" for pump in pumps]
     pump_summary = ", ".join(
         f"P{index + 1}={'ON' if is_on else 'OFF'}"
         for index, is_on in enumerate(reported_pumps)
