@@ -121,15 +121,17 @@ def login_post():
 @csrf.exempt
 def login_esp32():
     global current_token, token_expires
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"status": "failed"}), 400
 
     username = data.get("username", "")
     password = data.get("password", "")
     credentials_match = (
         DEVICE_USERNAME
         and DEVICE_PASSWORD
-        and hmac.compare_digest(str(username), DEVICE_USERNAME)
-        and hmac.compare_digest(str(password), DEVICE_PASSWORD)
+        and hmac.compare_digest(str(username).encode("utf-8"), DEVICE_USERNAME.encode("utf-8"))
+        and hmac.compare_digest(str(password).encode("utf-8"), DEVICE_PASSWORD.encode("utf-8"))
     )
     if not credentials_match:
         return jsonify({"status": "failed"}), 401
