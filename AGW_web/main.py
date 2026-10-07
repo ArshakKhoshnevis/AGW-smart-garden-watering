@@ -1,6 +1,7 @@
 import hmac
 import os
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from functools import wraps
 from getpass import getpass
 
@@ -47,6 +48,11 @@ limiter = Limiter(
 )
 
 DEVICE_TOKEN = os.environ.get("AGW_DEVICE_TOKEN", "")
+try:
+    LOG_TIMEZONE = ZoneInfo(os.environ.get("AGW_LOG_TIMEZONE", "Asia/Tehran"))
+except ZoneInfoNotFoundError:
+    LOG_TIMEZONE = timezone.utc
+    app.logger.warning("Unknown AGW_LOG_TIMEZONE; server heartbeat logs will use UTC.")
 
 
 class User(db.Model):
@@ -83,6 +89,10 @@ def utc_now():
 
 def iso_utc(value):
     return value.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def log_local_time(value):
+    return value.astimezone(LOG_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def parse_utc(value):
@@ -262,6 +272,16 @@ def api_sensor():
     snapshot.moisture = soil
     snapshot.updated_at = iso_utc(now)
     db.session.commit()
+
+    pump_states = ["on" if pump.is_on else "off" for pump in pumps]
+    pump_summary = ", ".join(
+        f"P{index + 1}={state.upper()}" for index, state in enumerate(pump_states)
+    )
+    soil_summary = ", ".join(f"{value}%" for value in soil)
+    app.logger.info(
+        "[%s] ESP32 heartbeat received: soil=[%s], %s, server=OK, boot=%s",
+        log_local_time(now), soil_summary, pump_summary, boot,
+    )
     return jsonify({f"pump{index + 1}": pump.is_on for index, pump in enumerate(pumps)})
 
 
