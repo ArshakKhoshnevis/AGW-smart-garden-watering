@@ -142,15 +142,7 @@ On your development computer, copy `AGW/include/secrets.example.h` to `AGW/inclu
 - `AGW_DEVICE_TOKEN` to the exact token from `/etc/agw/agw.env`
 - `AGW_ROOT_CA_CERTIFICATE` to the public root CA certificate that issued the domain's HTTPS certificate
 
-Do not use `setInsecure()`. The root CA is public certificate data, not a private key. Confirm the issuing chain from your certificate provider/Caddy before copying the PEM certificate. Keep `AGW_MAX_PUMP_RUN_MS` at `5400000UL` to match the 90-minute server cap. Build and upload using PlatformIO, then open Serial Monitor at 115200 baud.
-
-A healthy device prints one status line every five seconds, for example:
-
-```text
-[2026-10-07 14:30:05] Data sent successfully: soil=[42%, 38%, 0%, 0%], server=OK, P1=OFF, P2=ON, P3=OFF, P4=OFF
-```
-
-This line contains Tehran local time, soil readings, server response, and all four pump states. Wi-Fi, clock, TLS, HTTP, and server-response failures are printed as status lines too. The ESP32 does not print the Wi-Fi password or device token.
+Do not use `setInsecure()`. The root CA is public certificate data, not a private key. Confirm the issuing chain from your certificate provider/Caddy before copying the PEM certificate. Keep `AGW_MAX_PUMP_RUN_MS` at `5400000UL` to match the 90-minute server cap. Build and upload using PlatformIO.
 
 ## 8. Check operation and logs
 
@@ -159,7 +151,7 @@ sudo journalctl -u agw -f
 sudo journalctl -u caddy -f
 ```
 
-The dashboard health endpoint is `https://agw.example.com/healthz`. The protected `/states` route requires a logged-in dashboard session. Keep pump outputs OFF while first validating the site, TLS, ESP32 token, and sensor readings.
+When the ESP32 is online and authenticating successfully, the AGW service log prints a heartbeat every five seconds, for example:\n\n```text\n[2026-10-07 14:30:05] ESP32 heartbeat received: soil=[42%, 38%, 0%, 0%], P1=OFF, P2=ON, P3=OFF, P4=OFF, server=OK, boot=False\n```\n\nThe timestamp is Tehran time. If these lines stop, inspect the nearby Gunicorn/Caddy log entries and check the garden Wi-Fi, ESP32 power, DNS, and TLS configuration. The dashboard health endpoint is `https://agw.example.com/healthz`; the protected `/states` route requires a logged-in dashboard session. Keep pump outputs OFF while first validating the site, TLS, ESP32 token, and sensor readings.
 
 ## Backups and updates
 
