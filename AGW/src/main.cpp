@@ -31,6 +31,7 @@ const int dry[4] = {3300, 3000, 3000, 3000};
 
 constexpr unsigned long POLL_INTERVAL_MS = 5000UL;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 30000UL;
+constexpr unsigned long CLOCK_RETRY_INTERVAL_MS = 30000UL;
 constexpr unsigned long HTTP_TIMEOUT_MS = 8000UL;
 constexpr unsigned long MAX_PUMP_RUN_MS = AGW_MAX_PUMP_RUN_MS;
 
@@ -39,7 +40,30 @@ bool pumpStates[4] = {false, false, false, false};
 unsigned long pumpStartedAt[4] = {0, 0, 0, 0};
 unsigned long lastPollAt = 0;
 unsigned long lastWifiAttemptAt = 0;
+unsigned long lastClockAttemptAt = 0;
 bool clockReady = false;
+bool firstServerSync = true;
+
+String timestamp() {
+    if (!clockReady) {
+        return "time-unset";
+    }
+    struct tm timeInfo;
+    if (!getLocalTime(&timeInfo, 20)) {
+        return "time-unset";
+    }
+    char buffer[24];
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeInfo);
+    return String(buffer);
+}
+
+void printPumpStates() {
+    Serial.printf("P1=%s, P2=%s, P3=%s, P4=%s",
+        pumpStates[0] ? "ON" : "OFF",
+        pumpStates[1] ? "ON" : "OFF",
+        pumpStates[2] ? "ON" : "OFF",
+        pumpStates[3] ? "ON" : "OFF");
+}
 
 void setPumpOutput(int index, bool on) {
     pumpStates[index] = on;
@@ -53,29 +77,35 @@ void enforceLocalRunLimits() {
         if (pumpStates[i] && now - pumpStartedAt[i] >= MAX_PUMP_RUN_MS) {
             setPumpOutput(i, false);
             pumpStartedAt[i] = 0;
-            Serial.printf("Pump %d stopped by the local 90-minute safety limit.\n", i + 1);
+            Serial.printf("[%s] Pump %d stopped by the local 90-minute safety limit. ",
+                timestamp().c_str(), i + 1);
+            printPumpStates();
+            Serial.println();
         }
     }
 }
 
 bool syncClock() {
+    // POSIX TZ uses the opposite sign: IRST-3:30 is UTC+03:30 (Iran).
+    setenv("TZ", "IRST-3:30", 1);
+    tzset();
     configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
     struct tm timeInfo;
     clockReady = getLocalTime(&timeInfo, 10000);
     if (!clockReady) {
-        Serial.println("Could not set the clock; HTTPS requests are paused until TLS certificates can be checked.");
+        Serial.println("[time-unset] Could not sync clock; HTTPS requests paused until TLS certificates can be checked.");
+    } else {
+        Serial.printf("[%s] Clock synchronized.\n", timestamp().c_str());
     }
     return clockReady;
 }
 
 bool connectWiFi() {
     if (WiFi.status() == WL_CONNECTED) {
-        if (!clockReady) {
-            syncClock();
-        }
         return clockReady;
     }
 
+    Serial.printf("[%s] Connecting to Wi-Fi...\n", timestamp().c_str());
     WiFi.mode(WIFI_STA);
     WiFi.begin(AGW_WIFI_SSID, AGW_WIFI_PASSWORD);
     const unsigned long attemptStarted = millis();
@@ -85,11 +115,12 @@ bool connectWiFi() {
     }
 
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Wi-Fi unavailable; will retry.");
+        Serial.printf("[%s] Wi-Fi unavailable; will retry.\n", timestamp().c_str());
         return false;
     }
 
-    Serial.println("Wi-Fi connected.");
+    Serial.printf("[%s] Wi-Fi connected.\n", timestamp().c_str());
+    lastClockAttemptAt = millis();
     clockReady = syncClock();
     return clockReady;
 }
@@ -102,14 +133,21 @@ int readMoisture(int index) {
 
 void pollServer() {
     if (WiFi.status() != WL_CONNECTED || !clockReady) {
+        Serial.printf("[%s] ESP32 alive; server poll skipped (Wi-Fi/clock unavailable). ",
+            timestamp().c_str());
+        printPumpStates();
+        Serial.println();
         return;
     }
 
     StaticJsonDocument<256> requestDocument;
     JsonArray soil = requestDocument.createNestedArray("soil");
+    int moisture[4];
     for (int i = 0; i < 4; i++) {
-        soil.add(readMoisture(i));
+        moisture[i] = readMoisture(i);
+        soil.add(moisture[i]);
     }
+    requestDocument["boot"] = firstServerSync;
 
     String body;
     serializeJson(requestDocument, body);
@@ -118,7 +156,9 @@ void pollServer() {
     http.setConnectTimeout(HTTP_TIMEOUT_MS);
     http.setTimeout(HTTP_TIMEOUT_MS);
     if (!http.begin(tlsClient, String(AGW_SERVER_URL) + "/api-sensors")) {
-        Serial.println("Could not initialize the HTTPS request.");
+        Serial.printf("[%s] HTTPS init failed. ", timestamp().c_str());
+        printPumpStates();
+        Serial.println();
         return;
     }
 
@@ -142,11 +182,22 @@ void pollServer() {
                     pumpStartedAt[i] = 0;
                 }
             }
+            firstServerSync = false;
+            Serial.printf("[%s] Data sent successfully: soil=[%d%%, %d%%, %d%%, %d%%], server=OK, ",
+                timestamp().c_str(), moisture[0], moisture[1], moisture[2], moisture[3]);
+            printPumpStates();
+            Serial.println();
         } else {
-            Serial.println("Invalid response from the server; keeping current outputs until the local cutoff.");
+            Serial.printf("[%s] Invalid server response; retaining outputs until local cutoff. ",
+                timestamp().c_str());
+            printPumpStates();
+            Serial.println();
         }
     } else {
-        Serial.printf("Server request failed (HTTP %d); keeping current outputs until the local cutoff.\n", httpCode);
+        Serial.printf("[%s] Server request failed (HTTP %d); retaining outputs until local cutoff. ",
+            timestamp().c_str(), httpCode);
+        printPumpStates();
+        Serial.println();
     }
 
     http.end();
@@ -154,6 +205,7 @@ void pollServer() {
 
 void setup() {
     Serial.begin(115200);
+    delay(100);
 
     // Drive every active-high relay output OFF as early as possible after boot.
     for (int i = 0; i < 4; i++) {
@@ -164,6 +216,10 @@ void setup() {
         pumpStates[i] = false;
         pumpStartedAt[i] = 0;
     }
+
+    Serial.printf("[%s] AGW ESP32 starting. ", timestamp().c_str());
+    printPumpStates();
+    Serial.println();
 
     tlsClient.setCACert(AGW_ROOT_CA_CERTIFICATE);
     connectWiFi();
@@ -179,11 +235,14 @@ void loop() {
         lastWifiAttemptAt = now;
         clockReady = false;
         connectWiFi();
-    } else if (WiFi.status() == WL_CONNECTED && !clockReady) {
+    } else if (WiFi.status() == WL_CONNECTED &&
+               !clockReady &&
+               now - lastClockAttemptAt >= CLOCK_RETRY_INTERVAL_MS) {
+        lastClockAttemptAt = now;
         clockReady = syncClock();
     }
 
-    if (WiFi.status() == WL_CONNECTED && clockReady && now - lastPollAt >= POLL_INTERVAL_MS) {
+    if (now - lastPollAt >= POLL_INTERVAL_MS) {
         lastPollAt = now;
         pollServer();
     }
