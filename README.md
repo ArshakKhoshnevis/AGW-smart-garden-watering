@@ -303,7 +303,7 @@ The system has been deployed in the garden and tested with the actual watering s
 
 Soil-moisture sensing hardware and firmware support have been implemented and tested on the prototype, but the sensors were not installed in the final garden deployment because sufficiently long cables were not available due to a sharp increase in cable prices.
 
-The system currently operates within the local network. Remote access outside the local network is planned as a future improvement.
+Remote hosting is being prepared. The [Ubuntu VPS deployment guide](docs/deployment-ubuntu.md) covers the server, HTTPS, secrets, and ESP32 configuration; a domain and VPS must be provisioned before remote operation is available.
 
 ## Security & Configuration
 
