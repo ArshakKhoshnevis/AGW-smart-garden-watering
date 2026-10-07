@@ -29,7 +29,7 @@ const int soilPins[4] = {32, 33, 34, 35};
 const int wet[4] = {2000, 2000, 2000, 2000};
 const int dry[4] = {3300, 3000, 3000, 3000};
 
-constexpr unsigned long POLL_INTERVAL_MS = 5000UL;
+constexpr unsigned long POLL_INTERVAL_MS = 60000UL;
 constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 30000UL;
 constexpr unsigned long CLOCK_RETRY_INTERVAL_MS = 30000UL;
 constexpr unsigned long HTTP_TIMEOUT_MS = 8000UL;
@@ -142,10 +142,12 @@ void pollServer() {
 
     StaticJsonDocument<256> requestDocument;
     JsonArray soil = requestDocument.createNestedArray("soil");
+    JsonArray reportedPumps = requestDocument.createNestedArray("pumpState");
     int moisture[4];
     for (int i = 0; i < 4; i++) {
         moisture[i] = readMoisture(i);
         soil.add(moisture[i]);
+        reportedPumps.add(pumpStates[i]);
     }
     requestDocument["boot"] = firstServerSync;
 
