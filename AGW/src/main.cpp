@@ -1,209 +1,192 @@
+#include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <FS.h>
-#include <LittleFS.h>
+#include <time.h>
 #include "secrets.h"
-#include <AESLib.h>
-#include <base64.h>
 
-#define SERVER_URL "https://your-server.example.com"
+#ifndef AGW_SERVER_URL
+#error "Set AGW_SERVER_URL in your local, untracked secrets.h"
+#endif
+#ifndef AGW_WIFI_SSID
+#error "Set AGW_WIFI_SSID in your local, untracked secrets.h"
+#endif
+#ifndef AGW_WIFI_PASSWORD
+#error "Set AGW_WIFI_PASSWORD in your local, untracked secrets.h"
+#endif
+#ifndef AGW_DEVICE_TOKEN
+#error "Set AGW_DEVICE_TOKEN in your local, untracked secrets.h"
+#endif
+#ifndef AGW_MAX_PUMP_RUN_MS
+#error "Set AGW_MAX_PUMP_RUN_MS in your local, untracked secrets.h"
+#endif
 
-String esp32token = "";
-String ssid = "", wifiPass = "", webUsername, webPassword;
-AESLib aesLib;
-
-// const int pumpPins[4] = {2, 4, 5, 18};
+// Active-high pump outputs, based on the current prototype wiring.
 const int pumpPins[4] = {18, 19, 21, 22};
 const int ledPins[4] = {23, 25, 26, 27};
 const int soilPins[4] = {32, 33, 34, 35};
-const int checkPins[8] = {18, 19, 21, 22, 23, 25, 26, 27};
 const int wet[4] = {2000, 2000, 2000, 2000};
 const int dry[4] = {3300, 3000, 3000, 3000};
-unsigned long tokenExpires = 0, expireTime = 600 * 1000, start;
-bool pumpStates[4];
-int soilVals[4];
 
-void loadCredentials() {
-    if(!LittleFS.begin()) {
-        Serial.println("Failed to mount filesystem");
-        return;
-    }
-    File file = LittleFS.open("/credentials.json", "r");
+constexpr unsigned long POLL_INTERVAL_MS = 5000UL;
+constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 30000UL;
+constexpr unsigned long HTTP_TIMEOUT_MS = 8000UL;
+constexpr unsigned long MAX_PUMP_RUN_MS = AGW_MAX_PUMP_RUN_MS;
 
-    if(!file) {
-        Serial.println("Failed to open credentials file");
-        return;
-    }
+WiFiClientSecure tlsClient;
+bool pumpStates[4] = {false, false, false, false};
+unsigned long pumpStartedAt[4] = {0, 0, 0, 0};
+unsigned long lastPollAt = 0;
+unsigned long lastWifiAttemptAt = 0;
+bool clockReady = false;
 
-    StaticJsonDocument<250> doc;
-    DeserializationError error = deserializeJson(doc, file);
-
-    if(error) {
-        Serial.println("Failed to parse JSON");
-        return;
-    }
-
-    webUsername = doc["webUsername"].as<String>();
-    webPassword = doc["webPassword"].as<String>();
-    ssid = "your-ssid";
-    wifiPass = "your-pass";
-
-    Serial.println("fourth succsess");
-
-    file.close();
+void setPumpOutput(int index, bool on) {
+    pumpStates[index] = on;
+    digitalWrite(pumpPins[index], on ? HIGH : LOW);
+    digitalWrite(ledPins[index], on ? HIGH : LOW);
 }
 
-bool login() {
-    if(WiFi.status() != WL_CONNECTED) {
-        Serial.println("Failed to connect");
+void enforceLocalRunLimits() {
+    const unsigned long now = millis();
+    for (int i = 0; i < 4; i++) {
+        if (pumpStates[i] && now - pumpStartedAt[i] >= MAX_PUMP_RUN_MS) {
+            setPumpOutput(i, false);
+            pumpStartedAt[i] = 0;
+            Serial.printf("Pump %d stopped by the local 90-minute safety limit.\n", i + 1);
+        }
+    }
+}
+
+bool syncClock() {
+    configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+    struct tm timeInfo;
+    clockReady = getLocalTime(&timeInfo, 10000);
+    if (!clockReady) {
+        Serial.println("Could not set the clock; HTTPS requests are paused until TLS certificates can be checked.");
+    }
+    return clockReady;
+}
+
+bool connectWiFi() {
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!clockReady) {
+            syncClock();
+        }
+        return clockReady;
+    }
+
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(AGW_WIFI_SSID, AGW_WIFI_PASSWORD);
+    const unsigned long attemptStarted = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - attemptStarted < 15000UL) {
+        enforceLocalRunLimits();
+        delay(100);
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("Wi-Fi unavailable; will retry.");
         return false;
     }
 
-    HTTPClient http;
-    http.begin(SERVER_URL "/login-esp32");
-    http.addHeader("Content-Type", "application/json");
+    Serial.println("Wi-Fi connected.");
+    clockReady = syncClock();
+    return clockReady;
+}
 
-    StaticJsonDocument<250> doc;
-    doc["username"] = webUsername, doc["password"] = webPassword;
+int readMoisture(int index) {
+    int value = analogRead(soilPins[index]);
+    value = constrain(value, wet[index], dry[index]);
+    return map(value, wet[index], dry[index], 100, 0);
+}
+
+void pollServer() {
+    if (WiFi.status() != WL_CONNECTED || !clockReady) {
+        return;
+    }
+
+    StaticJsonDocument<256> requestDocument;
+    JsonArray soil = requestDocument.createNestedArray("soil");
+    for (int i = 0; i < 4; i++) {
+        soil.add(readMoisture(i));
+    }
 
     String body;
-    serializeJson(doc, body);
-
-    delay(100);
-
-    int httpCode = http.POST(body);
-
-    delay(100);
-
-    Serial.println("Here");
-
-    if(httpCode == 200) {
-        String payload = http.getString();
-        StaticJsonDocument<250> res;
-        deserializeJson(res, payload);
-        // String ct = res["token"].as<String>();
-        // char ct_array[128], decrypted[128];
-        // ct.toCharArray(ct_array, 128);
-        // byte iv[16] = {0};
-        // aesLib.decrypt64(ct_array, strlen(ct_array), (byte*)decrypted, SECRET_KEY, 128, iv);
-        esp32token = res["token"].as<String>();
-        tokenExpires = millis() + expireTime;
-        http.end();
-        return true;
-    }
-    http.end();
-    return false;
-}
-
-inline void refresh_token() {
-    if((long)(tokenExpires - millis()) <= 0) {
-        delay(1);
-        if(login()) {
-            tokenExpires = millis() + expireTime;
-            Serial.println("Token refreshed! : " + esp32token);
-        }
-        else {
-            Serial.print("Login Failed!!!");
-            delay(100);
-        }
-    }
-}
-
-int Get(int id) {
-    int val = analogRead(soilPins[id]);
-    val = constrain(val, wet[id], dry[id]);
-    return map(val, wet[id], dry[id], 100, 0);
-}
-
-bool Upd() {
-    refresh_token();
+    serializeJson(requestDocument, body);
 
     HTTPClient http;
-    http.begin(SERVER_URL "/api-sensors");
+    http.setConnectTimeout(HTTP_TIMEOUT_MS);
+    http.setTimeout(HTTP_TIMEOUT_MS);
+    if (!http.begin(tlsClient, String(AGW_SERVER_URL) + "/api-sensors")) {
+        Serial.println("Could not initialize the HTTPS request.");
+        return;
+    }
+
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", "Bearer " + esp32token);
+    http.addHeader("Authorization", String("Bearer ") + AGW_DEVICE_TOKEN);
+    const int httpCode = http.POST(body);
 
-    StaticJsonDocument<250> doc;
-    for(int i = 0; i < 4; i++)
-        doc["soil"][i] = Get(i);
-
-    String body;
-    serializeJson(doc, body);
-
-    int httpCode = http.POST(body);
-    if(httpCode == 200) {
-        String payload = http.getString();
-        Serial.println("Data was sent successfully: " + payload);
-
-        StaticJsonDocument<200> res;
-        DeserializationError error = deserializeJson(res, payload);
+    if (httpCode == HTTP_CODE_OK) {
+        StaticJsonDocument<256> responseDocument;
+        DeserializationError error = deserializeJson(responseDocument, http.getString());
         if (!error) {
-            for(int i = 0; i < 4; i++) {
-                pumpStates[i] = res["pump" + String(i + 1)].as<bool>();
-                digitalWrite(pumpPins[i], pumpStates[i] ? HIGH : LOW);
-                digitalWrite(ledPins[i], pumpStates[i] ? HIGH : LOW);
-            }
-        }
+            for (int i = 0; i < 4; i++) {
+                const String key = String("pump") + String(i + 1);
+                const bool requestedState = responseDocument[key] | false;
 
-        http.end();
-        return true;
+                if (requestedState && !pumpStates[i]) {
+                    pumpStartedAt[i] = millis();
+                    setPumpOutput(i, true);
+                } else if (!requestedState && pumpStates[i]) {
+                    setPumpOutput(i, false);
+                    pumpStartedAt[i] = 0;
+                }
+            }
+        } else {
+            Serial.println("Invalid response from the server; keeping current outputs until the local cutoff.");
+        }
+    } else {
+        Serial.printf("Server request failed (HTTP %d); keeping current outputs until the local cutoff.\n", httpCode);
     }
-    Serial.println("Failed to send data");
+
     http.end();
-    return false;
 }
 
 void setup() {
     Serial.begin(115200);
 
-    delay(6000);
-
-    for(int i = 0; i < 4; i++) {
-        pumpStates[i] = false;
+    // Drive every active-high relay output OFF as early as possible after boot.
+    for (int i = 0; i < 4; i++) {
+        digitalWrite(pumpPins[i], LOW);
         pinMode(pumpPins[i], OUTPUT);
+        digitalWrite(ledPins[i], LOW);
         pinMode(ledPins[i], OUTPUT);
-        pinMode(checkPins[2 * i], OUTPUT);
-        pinMode(checkPins[2 * i + 1], OUTPUT);
+        pumpStates[i] = false;
+        pumpStartedAt[i] = 0;
     }
 
-    delay(5000);
-
-    loadCredentials();
-
-    Serial.println(ssid + " " + wifiPass);
-
-    WiFi.begin(ssid.c_str(), wifiPass.c_str());
-
-    start = millis();
-    while (WiFi.status() != WL_CONNECTED) {
-        Serial.println(WiFi.status());
-
-        if (millis() - start > 15000) {
-            Serial.println("Failed to connect WiFi");
-            return;
-        }
-
-        delay(1);
-    }
-
-    Serial.println("\nWiFi connected!");
-
-    delay(5000);
-
-    if(login())
-        Serial.println("Login successful! Token: " + esp32token);
-    else
-        Serial.println("Login failed");
-
-    delay(5000);
-
-    start = 5001;
+    tlsClient.setCACert(AGW_ROOT_CA_CERTIFICATE);
+    connectWiFi();
+    lastWifiAttemptAt = millis();
+    lastPollAt = millis() - POLL_INTERVAL_MS;
 }
 
 void loop() {
-    if(millis() - start > 5000) {
-        Upd();
-        start = millis();
+    enforceLocalRunLimits();
+
+    const unsigned long now = millis();
+    if (WiFi.status() != WL_CONNECTED && now - lastWifiAttemptAt >= WIFI_RETRY_INTERVAL_MS) {
+        lastWifiAttemptAt = now;
+        clockReady = false;
+        connectWiFi();
+    } else if (WiFi.status() == WL_CONNECTED && !clockReady) {
+        clockReady = syncClock();
     }
+
+    if (WiFi.status() == WL_CONNECTED && clockReady && now - lastPollAt >= POLL_INTERVAL_MS) {
+        lastPollAt = now;
+        pollServer();
+    }
+
+    delay(20);
 }
