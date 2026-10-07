@@ -123,17 +123,12 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not session.get("username"):
-            if request.path in {"/states"} or request.path.startswith("/pump-post/"):
+            if request.path == "/states" or request.path.startswith("/pump-post/"):
                 return jsonify({"status": "unauthorized"}), 401
             flash("Login first!")
             return redirect(url_for("auth"))
         return view(*args, **kwargs)
     return wrapped
-
-
-def pumps_as_strings():
-    pumps = db.session.scalars(select(Pump).order_by(Pump.id)).all()
-    return ["on" if pump.is_on else "off" for pump in pumps]
 
 
 @app.route("/")
@@ -158,7 +153,6 @@ def login_post():
     user = db.session.scalar(select(User).where(User.username == username)) if username else None
 
     if not user or not user.check_pass(password):
-        # Use one message so the page does not reveal whether a username exists.
         flash("Username or password is incorrect.")
         return redirect(url_for("auth"))
 
@@ -192,7 +186,10 @@ def pump_post(pump_id):
         finish_pump_run(pump, now)
 
     db.session.commit()
-    return jsonify({"status": "success", "pump_state": pumps_as_strings()})
+    return jsonify({"status": "success", "pump_state": [
+        "on" if row.is_on else "off"
+        for row in db.session.scalars(select(Pump).order_by(Pump.id)).all()
+    ]})
 
 
 @app.route("/states")
@@ -205,12 +202,13 @@ def states():
     if snapshot is None or len(pumps) != 4:
         return jsonify({"status": "not_initialized"}), 503
 
-    last_time = []
-    for pump in pumps:
-        last_time.append({
+    last_time = [
+        {
             "date": pump.last_run_at or "",
             "dur": format_duration(pump.last_duration_seconds),
-        })
+        }
+        for pump in pumps
+    ]
 
     return jsonify({
         "moist": snapshot.moisture,
@@ -218,10 +216,12 @@ def states():
         "lastTime": last_time,
         "date": now.strftime("%Y-%m-%d"),
         "time": now.strftime("%H:%M:%S"),
+        "timestamp": iso_utc(now),
     })
 
 
 @app.route("/api-sensors", methods=["POST"])
+@limiter.limit("30 per minute")
 @csrf.exempt
 def api_sensor():
     if not DEVICE_TOKEN:
@@ -236,10 +236,12 @@ def api_sensor():
 
     data = request.get_json(silent=True)
     soil = data.get("soil") if isinstance(data, dict) else None
+    boot = data.get("boot", False) if isinstance(data, dict) else False
     if (
         not isinstance(soil, list)
         or len(soil) != 4
         or any(type(value) is not int or not 0 <= value <= 100 for value in soil)
+        or type(boot) is not bool
     ):
         return jsonify({"status": "invalid_sensor_data"}), 400
 
@@ -249,6 +251,13 @@ def api_sensor():
     pumps = db.session.scalars(select(Pump).order_by(Pump.id)).all()
     if snapshot is None or len(pumps) != 4:
         return jsonify({"status": "not_initialized"}), 503
+
+    # A reboot starts with relays OFF locally; clear saved ON commands to avoid
+    # unexpectedly restarting a pump after power loss or an ESP32 reset.
+    if boot:
+        for pump in pumps:
+            if pump.is_on:
+                finish_pump_run(pump, now)
 
     snapshot.moisture = soil
     snapshot.updated_at = iso_utc(now)
@@ -270,7 +279,7 @@ def healthz():
 
 @app.cli.command("init-db")
 def init_db():
-    """Create the initial database tables and four safe, OFF pump records."""
+    """Create initial tables and four safe, OFF pump records."""
     db.create_all()
     if db.session.get(SensorSnapshot, 1) is None:
         db.session.add(SensorSnapshot(id=1, moisture=[0, 0, 0, 0]))
@@ -283,7 +292,7 @@ def init_db():
 
 @app.cli.command("create-admin")
 def create_admin():
-    """Create or replace the single dashboard user's password."""
+    """Create or replace the dashboard user's password."""
     username = click.prompt("Username").strip()
     if not username or len(username) > 25:
         raise click.ClickException("Username must contain 1 to 25 characters.")
