@@ -227,6 +227,7 @@ def states():
         "date": now.strftime("%Y-%m-%d"),
         "time": now.strftime("%H:%M:%S"),
         "timestamp": iso_utc(now),
+        "deviceLastSeen": snapshot.updated_at,
     })
 
 
