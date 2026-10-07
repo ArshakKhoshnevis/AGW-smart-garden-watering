@@ -101,6 +101,9 @@ header {
 }
 
 .logout {
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
     position: absolute;
     color: brown;
     background-color: rgba(201, 201, 201, 0.5);
