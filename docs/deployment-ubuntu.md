@@ -107,7 +107,7 @@ sudo systemctl reload caddy
 
 Open `https://your-domain.example` and sign in. The health check is `https://your-domain.example/healthz`.
 
-The ESP32 must use the same domain as its `SERVER_URL` and the same login credentials in its ignored `credentials.json`. The ESP32 currently sends sensor updates about every five seconds. The dashboard itself polls the backend every two seconds.
+The ESP32 must use the same domain as its `SERVER_URL` and the same login credentials in its ignored `credentials.json`. The ESP32 currently sends sensor updates about every five seconds. The dashboard itself polls the backend every two seconds. This guide prepares the Flask backend only; the current firmware's HTTPS certificate verification still needs a separate check before sending credentials over the public internet.
 
 ## See ESP32 updates in the web app
 
