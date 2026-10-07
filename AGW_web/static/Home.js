@@ -109,7 +109,7 @@ function logNewHeartbeat(data) {
     if (heartbeatLogLines.length > 50) heartbeatLogLines.shift();
 
     const log = document.getElementById("esp32-log");
-    if (log) log.textContent = heartbeatLogLines.join("\\n");
+    if (log) log.textContent = heartbeatLogLines.join("\n");
 }
 
 function UpdateUI() {
