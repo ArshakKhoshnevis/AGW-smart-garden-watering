@@ -6,10 +6,11 @@
     <meta charset = "UTF-8">
     <meta name = "author" content = "Arshak Khoshnevis">
     <meta name = "viewport" content = "width = device-width, initial-scale = 1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Garden</title>
 
-    <link rel = "icon" href = "/static/blueberries.png" type = "image/x-icon">
-    <link rel = "stylesheet" href = "/static/Home.css">
+    <link rel = "icon" href="{{ url_for('static', filename='blueberries.png') }}" type = "image/x-icon">
+    <link rel = "stylesheet" href="{{ url_for('static', filename='Home.css') }}">
 
 </head>
 
@@ -33,7 +34,10 @@
 
             <div class = "garden">
 
-                <a href = "{{ url_for('logout') }}" class = "logout">EXIT</a>
+                <form action="{{ url_for('logout') }}" method="post" class="logout-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="logout">EXIT</button>
+                </form>
 
                 <div class = "garden-left">
                     <input id = "checkbox-0" class = "checkbox" type = "checkbox" onclick = "togglePump(0);">
@@ -94,7 +98,8 @@
 
                 <div class="logs">
                     <details>
-                        <summary>logs</summary>
+                        <summary id="esp-status">ESP32: waiting for data</summary>
+                        <pre id="esp-log" aria-live="polite">No ESP32 updates received yet.</pre>
                     </details>
                 </div>
 
@@ -103,7 +108,7 @@
     </div>
 
 
-    <script src = "/static/Home.js"></script>
+    <script src="{{ url_for('static', filename='Home.js') }}"></script>
 </body>
 
 </html>
