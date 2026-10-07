@@ -73,8 +73,8 @@ Keep one Gunicorn worker while using the in-memory rate limiter. The pump state 
 ## 4. Initialize the database and dashboard account
 
 ```sh
-sudo -u agw env $(sudo cat /etc/agw/agw.env) /opt/agw/venv/bin/flask --app /opt/agw/repo/AGW_web/main.py init-db
-sudo -u agw env $(sudo cat /etc/agw/agw.env) /opt/agw/venv/bin/flask --app /opt/agw/repo/AGW_web/main.py create-admin
+sudo -u agw sh -c 'set -a; . /etc/agw/agw.env; set +a; exec /opt/agw/venv/bin/flask --app /opt/agw/repo/AGW_web/main.py init-db'
+sudo -u agw sh -c 'set -a; . /etc/agw/agw.env; set +a; exec /opt/agw/venv/bin/flask --app /opt/agw/repo/AGW_web/main.py create-admin'
 ```
 
 Choose a unique dashboard password with at least 12 characters. To change it later, run the same `create-admin` command again.
