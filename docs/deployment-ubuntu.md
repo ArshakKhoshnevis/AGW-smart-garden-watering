@@ -168,10 +168,8 @@ Back up `/var/lib/agw/users.db` regularly and keep a protected copy of `/etc/agw
 To update after changes reach the branch you deploy:
 
 ```sh
-cd /opt/agw/repo
-sudo -u "$USER" git pull
+sudo git -C /opt/agw/repo -c safe.directory=/opt/agw/repo pull origin deployment/secure-vps
 sudo /opt/agw/venv/bin/pip install -r /opt/agw/repo/AGW_web/requirements.txt
 sudo systemctl restart agw
 ```
 
-Do not run `git pull` as root in a checkout owned by another user; adjust repository ownership or the update user consistently if needed.
