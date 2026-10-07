@@ -1,9 +1,10 @@
 import hmac
 import os
+import time
 from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from functools import wraps
 from getpass import getpass
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import click
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
@@ -11,7 +12,6 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import inspect, select, text
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -35,7 +35,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
     MAX_CONTENT_LENGTH=4096,
 )
-# Gunicorn will bind to localhost behind Caddy. Trust forwarded headers from that one proxy only.
+# Gunicorn binds to localhost behind Caddy. Trust forwarded headers from that one proxy only.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 db = SQLAlchemy(app)
@@ -52,13 +52,20 @@ try:
     LOG_TIMEZONE = ZoneInfo(os.environ.get("AGW_LOG_TIMEZONE", "Asia/Tehran"))
 except ZoneInfoNotFoundError:
     LOG_TIMEZONE = timezone.utc
-    app.logger.warning("Unknown AGW_LOG_TIMEZONE; server heartbeat logs will use UTC.")
+    app.logger.warning("Unknown AGW_LOG_TIMEZONE; heartbeat logs will use UTC.")
+
+# Live garden data stays in memory, matching the original app's simple state model.
+pump_state = ["off", "off", "off", "off"]
+pump_started_at = [None, None, None, None]
+moist = [0, 0, 0, 0]
+reported_pumps = [False, False, False, False]
+last_time = [{"date": "", "dur": "00:00:00.0"} for _ in range(4)]
+device_last_seen = None
 
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(25), unique=True, nullable=False)
-    # Keep the existing column name so an existing users.db remains readable.
     password = db.Column(db.String(255), nullable=False)
 
     def set_pass(self, password):
@@ -66,22 +73,6 @@ class User(db.Model):
 
     def check_pass(self, password):
         return check_password_hash(self.password, password)
-
-
-class SensorSnapshot(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    moisture = db.Column(db.JSON, nullable=False, default=lambda: [0, 0, 0, 0])
-    updated_at = db.Column(db.String(40), nullable=True)
-    reported_pumps = db.Column(db.JSON, nullable=False, default=lambda: [False, False, False, False])
-
-
-class Pump(db.Model):
-    # Database IDs are 1..4; the dashboard and ESP32 use indices 0..3.
-    id = db.Column(db.Integer, primary_key=True)
-    is_on = db.Column(db.Boolean, nullable=False, default=False)
-    started_at = db.Column(db.String(40), nullable=True)
-    last_run_at = db.Column(db.String(40), nullable=True)
-    last_duration_seconds = db.Column(db.Integer, nullable=False, default=0)
 
 
 def utc_now():
@@ -96,12 +87,6 @@ def log_local_time(value):
     return value.astimezone(LOG_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def parse_utc(value):
-    if not value:
-        return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-
 def format_duration(seconds):
     seconds = max(0, int(seconds or 0))
     hours, remainder = divmod(seconds, 3600)
@@ -109,25 +94,31 @@ def format_duration(seconds):
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.0"
 
 
-def finish_pump_run(pump, now):
-    if pump.is_on and pump.started_at:
-        started = parse_utc(pump.started_at)
-        pump.last_duration_seconds = max(0, int((now - started).total_seconds()))
-        pump.last_run_at = iso_utc(now)
-    pump.is_on = False
-    pump.started_at = None
+def stop_pump(index, now):
+    global pump_state, pump_started_at, last_time
+    if pump_state[index] == "on" and pump_started_at[index] is not None:
+        last_time[index] = {
+            "date": iso_utc(now),
+            "dur": format_duration((now - pump_started_at[index]).total_seconds()),
+        }
+    pump_state[index] = "off"
+    pump_started_at[index] = None
 
 
 def enforce_run_limits(now=None):
     now = now or utc_now()
-    changed = False
-    for pump in db.session.scalars(select(Pump)).all():
-        started = parse_utc(pump.started_at)
-        if pump.is_on and started and (now - started).total_seconds() >= MAX_PUMP_RUN_SECONDS:
-            finish_pump_run(pump, now)
-            changed = True
-    if changed:
-        db.session.commit()
+    for index in range(4):
+        started = pump_started_at[index]
+        if (
+            pump_state[index] == "on"
+            and started is not None
+            and (now - started).total_seconds() >= MAX_PUMP_RUN_SECONDS
+        ):
+            stop_pump(index, now)
+            app.logger.warning(
+                "[%s] Pump %d stopped by the 90-minute server safety limit.",
+                log_local_time(now), index + 1,
+            )
 
 
 def login_required(view):
@@ -161,7 +152,7 @@ def home():
 def login_post():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    user = db.session.scalar(select(User).where(User.username == username)) if username else None
+    user = User.query.filter_by(username=username).first() if username else None
 
     if not user or not user.check_pass(password):
         flash("Username or password is incorrect.")
@@ -176,6 +167,7 @@ def login_post():
 @app.route("/pump-post/<int:pump_id>", methods=["POST"])
 @login_required
 def pump_post(pump_id):
+    global pump_state, pump_started_at, last_time
     if not 0 <= pump_id < 4:
         return jsonify({"status": "invalid_pump"}), 404
 
@@ -186,21 +178,13 @@ def pump_post(pump_id):
 
     now = utc_now()
     enforce_run_limits(now)
-    pump = db.session.get(Pump, pump_id + 1)
-    if pump is None:
-        return jsonify({"status": "not_initialized"}), 503
+    if desired_state == "on" and pump_state[pump_id] == "off":
+        pump_state[pump_id] = "on"
+        pump_started_at[pump_id] = now
+    elif desired_state == "off" and pump_state[pump_id] == "on":
+        stop_pump(pump_id, now)
 
-    if desired_state == "on" and not pump.is_on:
-        pump.is_on = True
-        pump.started_at = iso_utc(now)
-    elif desired_state == "off" and pump.is_on:
-        finish_pump_run(pump, now)
-
-    db.session.commit()
-    return jsonify({"status": "success", "pump_state": [
-        "on" if row.is_on else "off"
-        for row in db.session.scalars(select(Pump).order_by(Pump.id)).all()
-    ]})
+    return jsonify({"status": "success", "pump_state": pump_state})
 
 
 @app.route("/states")
@@ -208,28 +192,15 @@ def pump_post(pump_id):
 def states():
     now = utc_now()
     enforce_run_limits(now)
-    snapshot = db.session.get(SensorSnapshot, 1)
-    pumps = db.session.scalars(select(Pump).order_by(Pump.id)).all()
-    if snapshot is None or len(pumps) != 4:
-        return jsonify({"status": "not_initialized"}), 503
-
-    last_time = [
-        {
-            "date": pump.last_run_at or "",
-            "dur": format_duration(pump.last_duration_seconds),
-        }
-        for pump in pumps
-    ]
-
     return jsonify({
-        "moist": snapshot.moisture,
-        "pumpState": ["on" if pump.is_on else "off" for pump in pumps],
+        "moist": moist,
+        "pumpState": pump_state,
+        "reportedPumpState": reported_pumps,
         "lastTime": last_time,
         "date": now.strftime("%Y-%m-%d"),
         "time": now.strftime("%H:%M:%S"),
         "timestamp": iso_utc(now),
-        "deviceLastSeen": snapshot.updated_at,
-        "reportedPumpState": snapshot.reported_pumps,
+        "deviceLastSeen": iso_utc(device_last_seen) if device_last_seen else None,
     })
 
 
@@ -237,6 +208,7 @@ def states():
 @limiter.limit("30 per minute")
 @csrf.exempt
 def api_sensor():
+    global moist, reported_pumps, device_last_seen, pump_state
     if not DEVICE_TOKEN:
         return jsonify({"status": "device_not_configured"}), 503
 
@@ -249,48 +221,40 @@ def api_sensor():
 
     data = request.get_json(silent=True)
     soil = data.get("soil") if isinstance(data, dict) else None
+    device_pumps = data.get("pumpState") if isinstance(data, dict) else None
     boot = data.get("boot", False) if isinstance(data, dict) else False
-    reported_pumps = data.get("pumpState") if isinstance(data, dict) else None
     if (
         not isinstance(soil, list)
         or len(soil) != 4
         or any(type(value) is not int or not 0 <= value <= 100 for value in soil)
-        or not isinstance(reported_pumps, list)
-        or len(reported_pumps) != 4
-        or any(type(value) is not bool for value in reported_pumps)
+        or not isinstance(device_pumps, list)
+        or len(device_pumps) != 4
+        or any(type(value) is not bool for value in device_pumps)
         or type(boot) is not bool
     ):
         return jsonify({"status": "invalid_sensor_data"}), 400
 
     now = utc_now()
     enforce_run_limits(now)
-    snapshot = db.session.get(SensorSnapshot, 1)
-    pumps = db.session.scalars(select(Pump).order_by(Pump.id)).all()
-    if snapshot is None or len(pumps) != 4:
-        return jsonify({"status": "not_initialized"}), 503
-
-    # A reboot starts with relays OFF locally; clear saved ON commands to avoid
-    # unexpectedly restarting a pump after power loss or an ESP32 reset.
     if boot:
-        for pump in pumps:
-            if pump.is_on:
-                finish_pump_run(pump, now)
+        # The ESP32 powers relays OFF at startup; discard commands from before the reboot.
+        for index in range(4):
+            stop_pump(index, now)
 
-    snapshot.moisture = soil
-    snapshot.updated_at = iso_utc(now)
-    snapshot.reported_pumps = reported_pumps
-    db.session.commit()
+    moist = soil
+    reported_pumps = device_pumps
+    device_last_seen = now
 
     pump_summary = ", ".join(
         f"P{index + 1}={'ON' if is_on else 'OFF'}"
-        for index, is_on in enumerate(reported_pumps)
+        for index, is_on in enumerate(device_pumps)
     )
     soil_summary = ", ".join(f"{value}%" for value in soil)
     app.logger.info(
         "[%s] ESP32 heartbeat received: soil=[%s], %s, server=OK, boot=%s",
         log_local_time(now), soil_summary, pump_summary, boot,
     )
-    return jsonify({f"pump{index + 1}": pump.is_on for index, pump in enumerate(pumps)})
+    return jsonify({f"pump{index + 1}": pump_state[index] == "on" for index in range(4)})
 
 
 @app.route("/logout", methods=["POST"])
@@ -307,22 +271,9 @@ def healthz():
 
 @app.cli.command("init-db")
 def init_db():
-    """Create initial tables and four safe, OFF pump records."""
+    """Create the small SQLite database used for dashboard accounts."""
     db.create_all()
-    snapshot_columns = {column["name"] for column in inspect(db.engine).get_columns("sensor_snapshot")}
-    if "reported_pumps" not in snapshot_columns:
-        db.session.execute(text(
-            "ALTER TABLE sensor_snapshot ADD COLUMN reported_pumps "
-            "JSON NOT NULL DEFAULT '[false, false, false, false]'"
-        ))
-        db.session.commit()
-    if db.session.get(SensorSnapshot, 1) is None:
-        db.session.add(SensorSnapshot(id=1, moisture=[0, 0, 0, 0]))
-    for pump_id in range(1, 5):
-        if db.session.get(Pump, pump_id) is None:
-            db.session.add(Pump(id=pump_id, is_on=False))
-    db.session.commit()
-    click.echo("AGW database initialized; all pumps are OFF.")
+    click.echo("AGW account database initialized.")
 
 
 @app.cli.command("create-admin")
@@ -339,7 +290,7 @@ def create_admin():
     if password != confirmation:
         raise click.ClickException("Passwords do not match.")
 
-    user = db.session.scalar(select(User).where(User.username == username))
+    user = User.query.filter_by(username=username).first()
     if user is None:
         user = User(username=username, password="")
     user.set_pass(password)
