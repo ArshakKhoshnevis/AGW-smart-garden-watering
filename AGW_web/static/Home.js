@@ -8,138 +8,121 @@ let arr = {
     time: ""
 };
 
-function togglePump(id) {
-    fetch(`/pump-post/${id}`, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => console.log(data))
-        .catch(err => console.error(err));
+async function togglePump(id) {
+    const checkbox = document.getElementById(`checkbox-${id}`);
+    const desiredState = checkbox.checked ? "on" : "off";
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+    try {
+        const response = await fetch(`/pump-post/${id}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+            },
+            body: JSON.stringify({ state: desiredState })
+        });
+        if (!response.ok) {
+            throw new Error(`Pump command failed (HTTP ${response.status})`);
+        }
+        await response.json();
+        await Update();
+    } catch (err) {
+        console.error(err);
+        await Update();
+    }
 }
 
 function timeSince(lastTime, rightNow) {
+    if (!lastTime) return "No recorded watering";
     const last = new Date(lastTime);
     const now = new Date(rightNow);
-    const delta = (now - last) / 1000;
-
-    if(delta <= 60)
-        return "just now!";
-    if(delta <= 3600)
-        return Math.floor(delta / 60) + " min(s) ago";
-    if(delta <= 3600 * 24)
-        return Math.floor(delta / 3600) + " hour(s) ago";
-    if(delta <= 3600 * 24 * 30)
-        return Math.floor(delta / (3600 * 24)) + " day(s) ago";
-    if(delta <= 3600 * 24 * 30 * 12)
-        return Math.floor(delta / (3600 * 24 * 30)) + " month(s) ago";
+    if (Number.isNaN(last.getTime()) || Number.isNaN(now.getTime())) {
+        return "No recorded watering";
+    }
+    const delta = Math.max(0, (now - last) / 1000);
+    if (delta <= 60) return "just now!";
+    if (delta <= 3600) return Math.floor(delta / 60) + " min(s) ago";
+    if (delta <= 3600 * 24) return Math.floor(delta / 3600) + " hour(s) ago";
+    if (delta <= 3600 * 24 * 30) return Math.floor(delta / (3600 * 24)) + " day(s) ago";
+    if (delta <= 3600 * 24 * 30 * 12) return Math.floor(delta / (3600 * 24 * 30)) + " month(s) ago";
     return Math.floor(delta / (3600 * 24 * 30 * 12)) + " year(s) ago";
 }
 
 function calDuration(dur) {
-    const parts = dur.split(':');
-    const hrs = parseInt(parts[0]);
-    const mins = parseInt(parts[1]);
-    const secs = parseInt(parts[2].split('.')[0]);
-
-    let res = '';
-    if(hrs > 0)
-        res += hrs + ' hour(s) ';
-    if(mins > 0)
-        res += mins + ' minute(s) ';
-    if(secs > 0)
-        res += secs + ' second(s) ';
-
-    return res;
+    if (!dur) return "--";
+    const parts = dur.split(":");
+    const hrs = parseInt(parts[0], 10);
+    const mins = parseInt(parts[1], 10);
+    const secs = parseInt(parts[2].split(".")[0], 10);
+    let res = "";
+    if (hrs > 0) res += hrs + " hour(s) ";
+    if (mins > 0) res += mins + " minute(s) ";
+    if (secs > 0) res += secs + " second(s) ";
+    return res || "0 seconds";
 }
 
 function UpdateUI() {
-    if(activeId !== null) {
-        const infoDiv = document.querySelector('.info');
-        // const details = infoDiv.querySelector('details');
-        // const isOpen = details ? details.open : false;
-
-        // infoDiv.innerHTML = `
-
-        //     <div class = "info-content">
-        //         <h1 class = "infoMoist">Moisture: <span>${arr.moist[activeId]}%</span></h1>
-
-        //         <details id = "LastTime">
-        //             <summary>Last Time</summary>
-        //             <h1 class = "infoLastTime">Last irrigation: ${timeSince(arr.lastTime[activeId]["date"], arr.date + " " + arr.time)}</h1>
-        //             <h1 class = "infoLastTime">Duration: ${calDuration(arr.lastTime[activeId]["dur"])}</h1>
-        //         </details>
-
-        //         <h1 class = "infoPumpState">Pump is: <span class = "${arr.pumpState[activeId]}">${arr.pumpState[activeId]}</span></h1>
-        //     </div>
-
-        //     <div class = "info-footer">
-        //         <h1 class = "infoDate">${arr.date}</h1>
-        //         <h1 class = "infoTime">${arr.time}</h1>
-        //     </div>
-        // `;
-
-        // const newDetails = infoDiv.querySelector('details');
-        // newDetails.open = isOpen;
-
-        infoDiv.querySelector('.infoMoist span').textContent = `${arr.moist[activeId]}%`;
-        infoDiv.querySelector('.infoLastTime:nth-of-type(1)').textContent =
-            `Last irrigation: ${timeSince(arr.lastTime[activeId]["date"], arr.date + " " + arr.time)}`;
-        infoDiv.querySelector('.infoLastTime:nth-of-type(2)').textContent =
-            `Duration: ${calDuration(arr.lastTime[activeId]["dur"])}`;
-        infoDiv.querySelector('.infoPumpState span').textContent = arr.pumpState[activeId];
-        infoDiv.querySelector('.infoPumpState span').className = arr.pumpState[activeId];
-
-        infoDiv.querySelector('.infoDate').textContent = arr.date;
-        infoDiv.querySelector('.infoTime').textContent = arr.time;
+    if (activeId !== null && arr.moist.length === 4 && arr.lastTime.length === 4) {
+        const infoDiv = document.querySelector(".info");
+        infoDiv.querySelector(".infoMoist span").textContent = `${arr.moist[activeId]}%`;
+        infoDiv.querySelector(".infoLastTime:nth-of-type(1)").textContent =
+            `Last irrigation: ${timeSince(arr.lastTime[activeId].date, arr.date + " " + arr.time)}`;
+        infoDiv.querySelector(".infoLastTime:nth-of-type(2)").textContent =
+            `Duration: ${calDuration(arr.lastTime[activeId].dur)}`;
+        infoDiv.querySelector(".infoPumpState span").textContent = arr.pumpState[activeId];
+        infoDiv.querySelector(".infoPumpState span").className = arr.pumpState[activeId];
+        infoDiv.querySelector(".infoDate").textContent = arr.date;
+        infoDiv.querySelector(".infoTime").textContent = arr.time;
     }
 
-    document.querySelectorAll('.moist').forEach((h, i) => h.textContent = `${arr.moist[i]}%`);
-
+    document.querySelectorAll(".moist").forEach((h, i) => {
+        if (arr.moist[i] !== undefined) h.textContent = `${arr.moist[i]}%`;
+    });
     arr.pumpState.forEach((state, i) => {
         const checkbox = document.getElementById(`checkbox-${i}`);
-        checkbox.checked = (state === "on");
+        if (checkbox) checkbox.checked = state === "on";
     });
 }
 
-function Update() {
-    fetch("/states")
-        .then(response => response.json())
-        .then(data => {
-            arr.pumpState = data.pumpState;
-            arr.moist = data.moist;
-            arr.lastTime = data.lastTime;
-            arr.date = data.date;
-            arr.time = data.time;
-
-            console.log("Updated:", arr, " activeID: ", activeId);
-
-            UpdateUI();
-        })
-        .catch(err => console.error(err));
+async function Update() {
+    try {
+        const response = await fetch("/states", { cache: "no-store" });
+        if (!response.ok) throw new Error(`Dashboard update failed (HTTP ${response.status})`);
+        const data = await response.json();
+        arr.pumpState = data.pumpState;
+        arr.moist = data.moist;
+        arr.lastTime = data.lastTime;
+        arr.date = data.date;
+        arr.time = data.time;
+        UpdateUI();
+    } catch (err) {
+        console.error(err);
+    }
 }
 
-document.querySelectorAll('.hinfo').forEach((link, index) => {
-    link.addEventListener('click', () => {
-        const infoDiv = document.querySelector('.info');
+document.querySelectorAll(".hinfo").forEach((link, index) => {
+    link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const infoDiv = document.querySelector(".info");
+        infoDiv.querySelectorAll("details").forEach(d => d.open = false);
 
-        infoDiv.querySelectorAll('details').forEach(d => d.open = false);
-
-        if(activeLink === link) {
+        if (activeLink === link) {
             link.textContent = "more";
             infoDiv.style.display = "none";
             activeLink = null;
             activeId = null;
             return;
         }
-
-        if(activeLink)
-            activeLink.textContent = "more";
-
-        infoDiv.style.display = 'flex';
-        document.querySelectorAll('.hinfo').forEach(l => l.textContent = "more");
+        if (activeLink) activeLink.textContent = "more";
+        infoDiv.style.display = "flex";
+        document.querySelectorAll(".hinfo").forEach(l => l.textContent = "more");
         link.textContent = "less";
         activeLink = link;
         activeId = index;
-        console.log("\n" + activeId)
+        UpdateUI();
     });
 });
 
+Update();
 setInterval(Update, 2000);
