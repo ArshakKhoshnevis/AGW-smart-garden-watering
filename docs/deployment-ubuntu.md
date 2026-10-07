@@ -146,12 +146,15 @@ Do not use `setInsecure()`. The root CA is public certificate data, not a privat
 
 ## 8. Check operation and logs
 
-```sh
-sudo journalctl -u agw -f
-sudo journalctl -u caddy -f
+After signing in, the dashboard shows an ESP32 status card in the lower-right corner. It shows whether the last heartbeat arrived recently. Open the card to see recent heartbeat lines; each new line is also written once to the browser's developer console with `console.info`. No terminal command is needed for routine checks.
+
+A healthy device should update about every five seconds. Example:
+
+```text
+[10/7/2026, 2:30:05 PM] ESP32 heartbeat received: soil=[42%, 38%, 0%, 0%], P1=OFF, P2=ON, P3=OFF, P4=OFF, server=OK
 ```
 
-When the ESP32 is online and authenticating successfully, the AGW service log prints a heartbeat every five seconds, for example:\n\n```text\n[2026-10-07 14:30:05] ESP32 heartbeat received: soil=[42%, 38%, 0%, 0%], P1=OFF, P2=ON, P3=OFF, P4=OFF, server=OK, boot=False\n```\n\nThe timestamp is Tehran time. If these lines stop, inspect the nearby Gunicorn/Caddy log entries and check the garden Wi-Fi, ESP32 power, DNS, and TLS configuration. The dashboard health endpoint is `https://agw.example.com/healthz`; the protected `/states` route requires a logged-in dashboard session. Keep pump outputs OFF while first validating the site, TLS, ESP32 token, and sensor readings.
+The timestamp uses the browser's local timezone. The pump states shown here are the states stored by the server and sent to the ESP32; the dashboard reports a stale heartbeat if the ESP32 stops checking in. The dashboard health endpoint is `https://agw.example.com/healthz`. Keep pump outputs OFF while first validating the site, TLS, ESP32 token, and sensor readings.
 
 ## Backups and updates
 
