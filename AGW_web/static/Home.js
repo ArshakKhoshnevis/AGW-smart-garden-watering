@@ -5,7 +5,8 @@ let arr = {
     moist: [],
     lastTime: [],
     date: "",
-    time: ""
+    time: "",
+    timestamp: ""
 };
 
 async function togglePump(id) {
@@ -67,7 +68,7 @@ function UpdateUI() {
         const infoDiv = document.querySelector(".info");
         infoDiv.querySelector(".infoMoist span").textContent = `${arr.moist[activeId]}%`;
         infoDiv.querySelector(".infoLastTime:nth-of-type(1)").textContent =
-            `Last irrigation: ${timeSince(arr.lastTime[activeId].date, arr.date + " " + arr.time)}`;
+            `Last irrigation: ${timeSince(arr.lastTime[activeId].date, new Date())}`;
         infoDiv.querySelector(".infoLastTime:nth-of-type(2)").textContent =
             `Duration: ${calDuration(arr.lastTime[activeId].dur)}`;
         infoDiv.querySelector(".infoPumpState span").textContent = arr.pumpState[activeId];
@@ -93,8 +94,10 @@ async function Update() {
         arr.pumpState = data.pumpState;
         arr.moist = data.moist;
         arr.lastTime = data.lastTime;
-        arr.date = data.date;
-        arr.time = data.time;
+        const serverNow = new Date(data.timestamp);
+        arr.timestamp = data.timestamp;
+        arr.date = `${serverNow.getFullYear()}-${String(serverNow.getMonth() + 1).padStart(2, "0")}-${String(serverNow.getDate()).padStart(2, "0")}`;
+        arr.time = `${String(serverNow.getHours()).padStart(2, "0")}:${String(serverNow.getMinutes()).padStart(2, "0")}:${String(serverNow.getSeconds()).padStart(2, "0")}`;
         UpdateUI();
     } catch (err) {
         console.error(err);
