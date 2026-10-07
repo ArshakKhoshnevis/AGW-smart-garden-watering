@@ -83,7 +83,7 @@ function updateDeviceStatus(lastSeen) {
     }
 
     const ageSeconds = Math.max(0, Math.floor((Date.now() - seenAt.getTime()) / 1000));
-    if (ageSeconds <= 15) {
+    if (ageSeconds <= 180) {
         status.textContent = `ESP32: online · last update ${ageSeconds}s ago`;
         status.className = "device-status device-online";
     } else {
@@ -99,8 +99,11 @@ function logNewHeartbeat(data) {
 
     const time = new Date(lastSeen).toLocaleString();
     const soil = data.moist.map(value => `${value}%`).join(", ");
-    const pumps = data.pumpState
-        .map((state, index) => `P${index + 1}=${state.toUpperCase()}`)
+    const reportedPumpState = Array.isArray(data.reportedPumpState)
+        ? data.reportedPumpState
+        : data.pumpState;
+    const pumps = reportedPumpState
+        .map((state, index) => `P${index + 1}=${state ? "ON" : "OFF"}`)
         .join(", ");
     const line = `[${time}] ESP32 heartbeat received: soil=[${soil}], ${pumps}, server=OK`;
 
