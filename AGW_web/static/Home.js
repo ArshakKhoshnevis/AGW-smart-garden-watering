@@ -1,4 +1,6 @@
 let activeLink = null, activeId = null;
+let lastLoggedHeartbeat = null;
+const heartbeatLogLines = [];
 
 let arr = {
     pumpState: [],
@@ -63,6 +65,53 @@ function calDuration(dur) {
     return res || "0 seconds";
 }
 
+function updateDeviceStatus(lastSeen) {
+    const status = document.getElementById("device-status");
+    if (!status) return;
+
+    if (!lastSeen) {
+        status.textContent = "ESP32: waiting for first heartbeat";
+        status.className = "device-status device-unknown";
+        return;
+    }
+
+    const seenAt = new Date(lastSeen);
+    if (Number.isNaN(seenAt.getTime())) {
+        status.textContent = "ESP32: heartbeat time unavailable";
+        status.className = "device-status device-unknown";
+        return;
+    }
+
+    const ageSeconds = Math.max(0, Math.floor((Date.now() - seenAt.getTime()) / 1000));
+    if (ageSeconds <= 15) {
+        status.textContent = `ESP32: online · last update ${ageSeconds}s ago`;
+        status.className = "device-status device-online";
+    } else {
+        status.textContent = `ESP32: no recent response · last seen ${seenAt.toLocaleString()}`;
+        status.className = "device-status device-offline";
+    }
+}
+
+function logNewHeartbeat(data) {
+    const lastSeen = data.deviceLastSeen;
+    if (!lastSeen || lastSeen === lastLoggedHeartbeat) return;
+    lastLoggedHeartbeat = lastSeen;
+
+    const time = new Date(lastSeen).toLocaleString();
+    const soil = data.moist.map(value => `${value}%`).join(", ");
+    const pumps = data.pumpState
+        .map((state, index) => `P${index + 1}=${state.toUpperCase()}`)
+        .join(", ");
+    const line = `[${time}] ESP32 heartbeat received: soil=[${soil}], ${pumps}, server=OK`;
+
+    console.info(line);
+    heartbeatLogLines.push(line);
+    if (heartbeatLogLines.length > 50) heartbeatLogLines.shift();
+
+    const log = document.getElementById("esp32-log");
+    if (log) log.textContent = heartbeatLogLines.join("\\n");
+}
+
 function UpdateUI() {
     if (activeId !== null && arr.moist.length === 4 && arr.lastTime.length === 4) {
         const infoDiv = document.querySelector(".info");
@@ -94,12 +143,19 @@ async function Update() {
         arr.pumpState = data.pumpState;
         arr.moist = data.moist;
         arr.lastTime = data.lastTime;
+        updateDeviceStatus(data.deviceLastSeen);
+        logNewHeartbeat(data);
         const serverNow = new Date(data.timestamp);
         arr.timestamp = data.timestamp;
         arr.date = `${serverNow.getFullYear()}-${String(serverNow.getMonth() + 1).padStart(2, "0")}-${String(serverNow.getDate()).padStart(2, "0")}`;
         arr.time = `${String(serverNow.getHours()).padStart(2, "0")}:${String(serverNow.getMinutes()).padStart(2, "0")}:${String(serverNow.getSeconds()).padStart(2, "0")}`;
         UpdateUI();
     } catch (err) {
+        const status = document.getElementById("device-status");
+        if (status) {
+            status.textContent = "Dashboard: unable to refresh ESP32 status";
+            status.className = "device-status device-offline";
+        }
         console.error(err);
     }
 }
