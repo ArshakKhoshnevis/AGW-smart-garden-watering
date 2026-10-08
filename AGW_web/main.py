@@ -262,6 +262,3 @@ def create_admin():
     click.echo(f"Dashboard account '{username}' is ready.")
 
 
-if __name__ == "__main__":
-    # Local development only. Production runs Gunicorn behind Caddy.
-    app.run(host = "127.0.0.1", port = 5000, debug = False)
