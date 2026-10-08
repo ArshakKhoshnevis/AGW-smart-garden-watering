@@ -8,17 +8,17 @@
     <meta name = "viewport" content = "width = device-width, initial-scale = 1.0">
     <title>Authentication</title>
 
-    <link rel = "stylesheet" href="{{ url_for('static', filename='Auth.css') }}">
+    <link rel = "stylesheet" href = "{{ url_for('static', filename = 'Auth.css') }}">
     <link rel = "stylesheet" href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel = "icon" href="{{ url_for('static', filename='blueberries.png') }}" type = "image/x-icon">
+    <link rel = "icon" href = "{{ url_for('static', filename = 'blueberries.png') }}" type = "image/x-icon">
 </head>
 
 <body>
     <main>
         <div class = "container">
             <h1 class = "toph">Authenticate</h1>
-            <form action="{{ url_for('login_post') }}" method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <form action = "{{ url_for('login_post') }}" method = "post">
+                <input type = "hidden" name = "csrf_token" value = "{{ csrf_token() }}">
                 <div class = "input-box">
                     <i class = "fa-solid fa-user"></i>
                     <input type = "text" name = "username" id = "username" placeholder = "Enter your username" autocomplete = "username" required>
@@ -36,7 +36,7 @@
             </form>
         </div>
     </main>
-    <script src="{{ url_for('static', filename='Auth.js') }}"></script>
+    <script src = "{{ url_for('static', filename = 'Auth.js') }}"></script>
 </body>
 
 </html>
