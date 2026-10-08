@@ -309,7 +309,7 @@ The system currently operates within the local network. Remote access outside th
 
 Credentials, authentication secrets, local configuration files, and generated databases are intentionally excluded from the repository.
 
-Before running the system, the required configuration files must be created locally according to the deployment environment.
+Before running the system, the required configuration files must be created locally according to the deployment environment. For a simple Ubuntu VPS setup, see the [deployment guide](docs/deployment-ubuntu.md).
 
 ## Repository Structure
 
