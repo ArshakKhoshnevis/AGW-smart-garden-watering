@@ -21,17 +21,17 @@ if not secret_key:
     raise RuntimeError("Set AGW_SECRET_KEY to a stable random secret before starting AGW.")
 
 app.config.update(
-    SECRET_KEY=secret_key,
-    SQLALCHEMY_DATABASE_URI=os.environ.get("AGW_DATABASE_URL", "sqlite:///users.db"),
-    SQLALCHEMY_TRACK_MODIFICATIONS=False,
-    SESSION_COOKIE_SECURE=os.environ.get("AGW_SESSION_COOKIE_SECURE", "true").lower() == "true",
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-    MAX_CONTENT_LENGTH=4096,
+    SECRET_KEY = secret_key,
+    SQLALCHEMY_DATABASE_URI = os.environ.get("AGW_DATABASE_URL", "sqlite:///users.db"),
+    SQLALCHEMY_TRACK_MODIFICATIONS = False,
+    SESSION_COOKIE_SECURE = os.environ.get("AGW_SESSION_COOKIE_SECURE", "true").lower() == "true",
+    SESSION_COOKIE_HTTPONLY = True,
+    SESSION_COOKIE_SAMESITE = "Lax",
+    MAX_CONTENT_LENGTH = 4096,
 )
 
 # Production runs behind one local reverse proxy (Caddy).
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for = 1, x_proto = 1, x_host = 1)
 
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
@@ -56,9 +56,9 @@ last_device_update = None
 
 
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(25), unique=True, nullable=False)
-    password = db.Column(db.String(150), nullable=False)
+    id = db.Column(db.Integer, primary_key = True)
+    username = db.Column(db.String(25), unique = True, nullable = False)
+    password = db.Column(db.String(150), nullable = False)
 
     def set_pass(self, password):
         self.password = generate_password_hash(password)
@@ -102,11 +102,11 @@ def home():
     return render_template("Home.html")
 
 
-@app.route("/login-post", methods=["POST"])
+@app.route("/login-post", methods = ["POST"])
 def login_post():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    user = User.query.filter_by(username=username).first() if username else None
+    user = User.query.filter_by(username = username).first() if username else None
 
     if not user or not user.check_pass(password):
         flash("Username or password is incorrect.")
@@ -117,11 +117,11 @@ def login_post():
     return redirect(url_for("home"))
 
 
-@app.route("/login-esp32", methods=["POST"])
+@app.route("/login-esp32", methods = ["POST"])
 @csrf.exempt
 def login_esp32():
     global current_token, token_expires
-    data = request.get_json(silent=True)
+    data = request.get_json(silent = True)
     if not isinstance(data, dict):
         return jsonify({"status": "failed"}), 400
 
@@ -141,7 +141,7 @@ def login_esp32():
     return jsonify({"status": "success", "token": current_token})
 
 
-@app.route("/pump-post/<int:pump_id>", methods=["POST"])
+@app.route("/pump-post/<int:pump_id>", methods = ["POST"])
 @login_required
 def pump_post(pump_id):
     if not 0 <= pump_id < 4:
@@ -177,19 +177,19 @@ def states():
         "lastTime": last_time,
         "date": now.astimezone(LOG_TIMEZONE).strftime("%Y-%m-%d"),
         "time": now.astimezone(LOG_TIMEZONE).strftime("%H:%M:%S"),
-        "timestamp": now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "timestamp": now.isoformat(timespec = "seconds").replace("+00:00", "Z"),
         "lastUpdate": (
-            last_device_update.isoformat(timespec="seconds").replace("+00:00", "Z")
+            last_device_update.isoformat(timespec = "seconds").replace("+00:00", "Z")
             if last_device_update else None
         ),
     })
 
 
-@app.route("/api-sensors", methods=["POST"])
+@app.route("/api-sensors", methods = ["POST"])
 @csrf.exempt
 def api_sensor():
     global moist, last_device_update
-    data = request.get_json(silent=True)
+    data = request.get_json(silent = True)
     token = request.headers.get("Authorization", "")
     if token.startswith("Bearer "):
         token = token[7:]
@@ -210,9 +210,9 @@ def api_sensor():
     moist = soil
     last_device_update = datetime.now(timezone.utc)
     local_time = last_device_update.astimezone(LOG_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
-    states = ", ".join(f"P{i + 1}={state.upper()}" for i, state in enumerate(pump_state))
+    states = ", ".join(f"P{i + 1} = {state.upper()}" for i, state in enumerate(pump_state))
     app.logger.info(
-        "[%s] ESP32 data received: soil=[%s], %s",
+        "[%s] ESP32 data received: soil = [%s], %s",
         local_time,
         ", ".join(f"{value}%" for value in moist),
         states,
@@ -220,7 +220,7 @@ def api_sensor():
     return jsonify({f"pump{i + 1}": pump_state[i] == "on" for i in range(4)})
 
 
-@app.route("/logout", methods=["POST"])
+@app.route("/logout", methods = ["POST"])
 @login_required
 def logout():
     session.clear()
@@ -253,9 +253,9 @@ def create_admin():
     if password != confirmation:
         raise click.ClickException("Passwords do not match.")
 
-    user = User.query.filter_by(username=username).first()
+    user = User.query.filter_by(username = username).first()
     if user is None:
-        user = User(username=username, password="")
+        user = User(username = username, password = "")
     user.set_pass(password)
     db.session.add(user)
     db.session.commit()
@@ -264,4 +264,4 @@ def create_admin():
 
 if __name__ == "__main__":
     # Local development only. Production runs Gunicorn behind Caddy.
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host = "127.0.0.1", port = 5000, debug = False)
